@@ -1,74 +1,102 @@
 "use client";
-import { updateProfile } from "firebase/auth";
+
+import PostForm from "@/components/PostForm";
+import PostFeed from "@/components/PostFeed";
+
 import { useEffect, useState } from "react";
+
+import {
+  onAuthStateChanged,
+  signOut,
+  updateProfile,
+  User,
+} from "firebase/auth";
+
 import {
   doc,
   getDoc,
 } from "firebase/firestore";
 
-import { db } from "@/firebase/config";
+import { auth, db } from "@/firebase/config";
 
 import { useRouter } from "next/navigation";
-
-import { auth } from "@/firebase/config";
-import {
-  onAuthStateChanged,
-  signOut,
-  User,
-} from "firebase/auth";
 
 export default function DashboardPage() {
   const router = useRouter();
 
-  const [user, setUser] = useState<User | null>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [photoURL, setPhotoURL] = useState("");
+  const [user, setUser] =
+    useState<User | null>(null);
 
-  // Check login
+  const [profile, setProfile] =
+    useState<any>(null);
+
+  const [loading, setLoading] =
+    useState(true);
+
+  const [photoURL, setPhotoURL] =
+    useState("");
+
+  // Check Login
   useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe =
+      onAuthStateChanged(
+        auth,
+        async (currentUser) => {
+          if (currentUser) {
+            setUser(currentUser);
 
-    if (currentUser) {
-      setUser(currentUser);
-      setPhotoURL(currentUser.photoURL || "");
+            setPhotoURL(
+              currentUser.photoURL || ""
+            );
 
-      // Fetch Firestore profile
-      const docRef = doc(db, "users", currentUser.uid);
+            // Get User Data
+            const docRef = doc(
+              db,
+              "users",
+              currentUser.uid
+            );
 
-      const docSnap = await getDoc(docRef);
+            const docSnap =
+              await getDoc(docRef);
 
-      if (docSnap.exists()) {
-        setProfile(docSnap.data());
-      }
+            if (docSnap.exists()) {
+              setProfile(docSnap.data());
+            }
+          } else {
+            router.push("/login");
+          }
 
-    } else {
-      router.push("/login");
-    }
+          setLoading(false);
+        }
+      );
 
-    setLoading(false);
-  });
-
-  return () => unsubscribe();
+    return () => unsubscribe();
   }, [router]);
 
   // Logout
   const handleLogout = async () => {
     await signOut(auth);
+
     router.push("/login");
   };
 
-  // Loading screen
+  // Save Profile Photo
+  const handleSavePhoto =
+    async () => {
+      if (!auth.currentUser) return;
+
+      await updateProfile(
+        auth.currentUser,
+        {
+          photoURL: photoURL,
+        }
+      );
+
+      alert("Photo Updated");
+    };
+
+  // Loading Screen
   if (loading) {
-    const handleSavePhoto = async () => {
-  if (!auth.currentUser) return;
-
-  await updateProfile(auth.currentUser, {
-    photoURL: photoURL,
-  });
-
-  alert("Profile photo updated!");
-  };
     return (
       <div
         style={{
@@ -78,7 +106,7 @@ export default function DashboardPage() {
           alignItems: "center",
           background: "#0f172a",
           color: "white",
-          fontSize: "20px",
+          fontSize: "22px",
         }}
       >
         Loading...
@@ -90,7 +118,8 @@ export default function DashboardPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: "#0f172a",
+        background:
+          "radial-gradient(circle at top, #1e3a8a, #0f172a)",
         color: "white",
         padding: "40px",
       }}
@@ -99,14 +128,15 @@ export default function DashboardPage() {
       <div
         style={{
           display: "flex",
-          justifyContent: "space-between",
+          justifyContent:
+            "space-between",
           alignItems: "center",
           marginBottom: "40px",
         }}
       >
         <h1
           style={{
-            fontSize: "32px",
+            fontSize: "35px",
             fontWeight: "bold",
           }}
         >
@@ -118,7 +148,7 @@ export default function DashboardPage() {
           style={{
             background: "#ef4444",
             border: "none",
-            padding: "10px 20px",
+            padding: "12px 20px",
             borderRadius: "10px",
             color: "white",
             cursor: "pointer",
@@ -129,83 +159,247 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* Stats */}
+      <div
+        style={{
+          display: "flex",
+          gap: "20px",
+          flexWrap: "wrap",
+          marginBottom: "40px",
+        }}
+      >
+        <div
+          style={{
+            background: "#1e293b",
+            padding: "20px",
+            borderRadius: "20px",
+            width: "180px",
+          }}
+        >
+          <h3>Posts</h3>
+
+          <p
+            style={{
+              fontSize: "30px",
+            }}
+          >
+            12
+          </p>
+        </div>
+
+        <div
+          style={{
+            background: "#1e293b",
+            padding: "20px",
+            borderRadius: "20px",
+            width: "180px",
+          }}
+        >
+          <h3>Followers</h3>
+
+          <p
+            style={{
+              fontSize: "30px",
+            }}
+          >
+            540
+          </p>
+        </div>
+
+        <div
+          style={{
+            background: "#1e293b",
+            padding: "20px",
+            borderRadius: "20px",
+            width: "180px",
+          }}
+        >
+          <h3>Following</h3>
+
+          <p
+            style={{
+              fontSize: "30px",
+            }}
+          >
+            210
+          </p>
+        </div>
+      </div>
+
       {/* User Card */}
       <div
         style={{
           background: "#1e293b",
           padding: "30px",
           borderRadius: "20px",
-          maxWidth: "500px",
+          maxWidth: "600px",
+          marginBottom: "40px",
+          boxShadow:
+            "0 0 20px rgba(0,0,0,0.3)",
+        }}
+      >
+        {/* Top */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "20px",
+            marginBottom: "25px",
+          }}
+        >
+          <img
+            src={
+              photoURL ||
+              "https://cdn-icons-png.flaticon.com/512/149/149071.png"
+            }
+            alt="profile"
+            width={110}
+            height={110}
+            style={{
+              borderRadius: "50%",
+              objectFit: "cover",
+              border:
+                "4px solid #3b82f6",
+            }}
+          />
+
+          <div>
+            <h2
+              style={{
+                fontSize: "30px",
+                marginBottom: "10px",
+              }}
+            >
+              Welcome{" "}
+              {profile?.name || "User"} 👋
+            </h2>
+
+            <p
+              style={{
+                color: "#94a3b8",
+              }}
+            >
+              Welcome to VibeCircle
+            </p>
+          </div>
+        </div>
+
+        {/* User Info */}
+        <div
+          style={{
+            lineHeight: "35px",
+            marginBottom: "25px",
+          }}
+        >
+          <p>
+            <strong>Email:</strong>{" "}
+            {profile?.email}
+          </p>
+
+          <p>
+            <strong>Name:</strong>{" "}
+            {profile?.name}
+          </p>
+
+          <p>
+            <strong>User ID:</strong>{" "}
+            {user?.uid}
+          </p>
+
+          <p>
+            <strong>Status:</strong>{" "}
+            Logged In
+          </p>
+        </div>
+
+        {/* Change Photo */}
+        <div>
+          <input
+            type="text"
+            placeholder="Paste Image URL"
+            value={photoURL}
+            onChange={(e) =>
+              setPhotoURL(
+                e.target.value
+              )
+            }
+            style={{
+              width: "100%",
+              padding: "12px",
+              borderRadius: "10px",
+              border: "none",
+              marginBottom: "12px",
+            }}
+          />
+
+          <button
+            onClick={handleSavePhoto}
+            style={{
+              background: "#3b82f6",
+              border: "none",
+              padding: "12px 20px",
+              borderRadius: "10px",
+              color: "white",
+              cursor: "pointer",
+              fontWeight: "bold",
+            }}
+          >
+            Save Photo
+          </button>
+        </div>
+      </div>
+
+      {/* Create Post */}
+      <div
+        style={{
+          background: "#1e293b",
+          padding: "25px",
+          borderRadius: "20px",
+          maxWidth: "700px",
+          marginBottom: "40px",
         }}
       >
         <h2
           style={{
-            fontSize: "24px",
             marginBottom: "20px",
           }}
         >
-          Welcome {profile?.name} 👋
+          Create Post
         </h2>
-        <div style={{ marginBottom: "20px" }}>
-         <img
-          src={
-          photoURL ||
-            "https://cdn-icons-png.flaticon.com/512/149/149071.png"
-          }
-          alt="profile"
-          width={100}
-          height={100}
-          style={{
-           borderRadius: "50%",
-           marginBottom: "15px",
-           objectFit: "cover",
-         }}
-      />
 
-         <input
-          type="text"
-          placeholder="Paste image URL"
-          value={photoURL}
-          onChange={(e) => setPhotoURL(e.target.value)}
-          style={{
-           width: "100%",
-           padding: "10px",
-           borderRadius: "10px",
-           border: "none",
-           marginBottom: "10px",
-          }}
-        />
+        <PostForm />
+      </div>
 
-        <button
-          onClick={handleSavePhoto}
-          style={{
-           background: "#3b82f6",
-          border: "none",
-          padding: "10px 20px",
-          borderRadius: "10px",
-          color: "white",
-          cursor: "pointer",
-          fontWeight: "bold",
+      {/* Posts Feed */}
+      <div
+        style={{
+          background: "#1e293b",
+          padding: "25px",
+          borderRadius: "20px",
+          maxWidth: "700px",
         }}
-       >
-      Save Photo
-     </button>
-    </div>
+      >
+        <h2
+          style={{
+            marginBottom: "20px",
+          }}
+        >
+          Recent Posts
+        </h2>
 
-        <p style={{ marginBottom: "10px" }}>
-          <strong>Email:</strong> {profile?.email}
-          <p style={{ marginBottom: "10px" }}>
-            <strong>Name:</strong> {user?.displayName}
-         </p>
-        </p>
+        <PostFeed />
+      </div>
 
-        <p style={{ marginBottom: "10px" }}>
-          <strong>User ID:</strong> {user?.uid}
-        </p>
-
-        <p>
-          <strong>Status:</strong> Logged In
-        </p>
+      {/* Footer */}
+      <div
+        style={{
+          marginTop: "60px",
+          textAlign: "center",
+          color: "#94a3b8",
+        }}
+      >
+        © 2026 VibeCircle — Built by
+        Prateek 🚀
       </div>
     </div>
   );

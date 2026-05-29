@@ -1,10 +1,32 @@
+import {
+  doc,
+  setDoc,
+  getDoc,
+} from "firebase/firestore";
+
 import { db } from "@/firebase/config";
-import { doc, setDoc } from "firebase/firestore";
 
-export async function saveUserProfile(uid: string, data: any) {
-  console.log("Saving started");
+export async function saveUserProfile(
+  uid: string,
+  data: any
+) {
+  await setDoc(
+    doc(db, "users", uid),
+    data,
+    { merge: true }
+  );
+}
 
-  await setDoc(doc(db, "users", uid), data);
+export async function getUserProfile(
+  uid: string
+) {
+  const docRef = doc(db, "users", uid);
 
-  console.log("Saved successfully");
+  const docSnap = await getDoc(docRef);
+
+  if (docSnap.exists()) {
+    return docSnap.data();
+  }
+
+  return null;
 }

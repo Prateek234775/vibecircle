@@ -1,7 +1,19 @@
 "use client";
-import { saveUserProfile } from "@/lib/firestore";
+
 import { useState, useEffect, useRef } from "react";
-import { auth, onAuthStateChanged } from "@/lib/userAuth";
+import {
+  auth,
+  db,
+} from "@/firebase/config";
+
+import {
+  onAuthStateChanged,
+} from "firebase/auth";
+
+import {
+  getUserProfile,
+  saveUserProfile,
+} from "@/lib/firestore";
 // ─── Firebase stubs – replace with your real imports ──────────────────────────
 // import { saveUserProfile } from "@/lib/firebase/firestore";
 // import { auth } from "@/lib/firebase/config";
@@ -24,6 +36,7 @@ interface UserProfile {
   hobbies: string;
   city: string;
   bio: string;
+  photoURL: string;
 }
 
 interface FieldErrors {
@@ -173,18 +186,39 @@ useEffect(() => {
   const unsubscribe = onAuthStateChanged(auth, (user) => {
     if (user) {
       setUid(user.uid);
+      const existingProfile =
+       await getUserProfile(user.uid);
+
+      if (existingProfile) {
+       setProfile({
+          name:
+           existingProfile.name || "",
+           profession:
+            existingProfile.profession || "",
+          hobbies:
+            existingProfile.hobbies || "",
+          city:
+            existingProfile.city || "",
+          bio:
+            existingProfile.bio || "",
+          photoURL:
+            existingProfile.photoURL || "",
+          });
+      }
     }
   });
 
   return () => unsubscribe();
 }, []); // replace with real uid
 
-  const [profile, setProfile] = useState<UserProfile>({
+  const [profile, setProfile] =
+  useState<UserProfile>({
     name: "",
     profession: "",
     hobbies: "",
     city: "",
     bio: "",
+    photoURL: "",
   });
 
   // Hobby tags derived from the hobbies string
@@ -649,7 +683,26 @@ useEffect(() => {
 
               {/* Avatar + name preview */}
               <div className="vc-avatar-section">
-                <Avatar name={profile.name || "Your Name"} />
+                {profile.photoURL ? (
+  <img
+    src={profile.photoURL}
+    alt="profile"
+    style={{
+      width: 88,
+      height: 88,
+      borderRadius: "50%",
+      objectFit: "cover",
+      border:
+        "3px solid rgba(139,92,246,0.4)",
+    }}
+  />
+          ) : (
+                  <Avatar
+                    name={
+                      profile.name || "Your Name"
+                    }
+                  />
+                )}
                 <div style={{ textAlign: "center" }}>
                   <p className="syne" style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.015em", color: profile.name ? "var(--text)" : "var(--text-3)" }}>
                     {profile.name || "Your Name"}
@@ -873,12 +926,38 @@ useEffect(() => {
                   </div>
 
                   {/* Bio */}
-                  <div className="fu fu6">
+                  <div className="fu fu5">
                     <Field
+                      label="Profile Photo URL"
+                      hint="Paste image URL"
+                      icon={
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                        >
+                          <path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10" />
+                          <circle cx="9" cy="9" r="2" />
+                          <path d="M21 15l-5-5L5 21" />
+                        </svg>
+                      }
+                    >
+                      <input
+                        className="vc-input"
+                        type="text"
+                        placeholder="https://..."
+                        value={profile.photoURL}
+                        onChange={set("photoURL")}
+                      />
+                      </Field>
+                    </div>
                       label="Bio"
                       error={touched.bio ? errors.bio : undefined}
                       icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
-                    >
+                    
                       <>
                         <textarea
                           className={`vc-textarea${touched.bio && errors.bio ? " err" : ""}`}

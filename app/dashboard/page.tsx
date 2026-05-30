@@ -15,11 +15,19 @@ import {
 import {
   doc,
   getDoc,
+  collection,
+  query,
+  where,
+  getCountFromServer,
 } from "firebase/firestore";
 
 import { auth, db } from "@/firebase/config";
+import { getUserRegistrations } from "@/lib/firestore";
+import { getUserNotifications } from "@/lib/firestore";
+import type { Registration, Notification } from "@/types";
 
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -35,6 +43,18 @@ export default function DashboardPage() {
 
   const [photoURL, setPhotoURL] =
     useState("");
+
+  const [myRegistrations, setMyRegistrations] =
+    useState<Registration[]>([]);
+
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+
+  const [stats, setStats] = useState({
+    posts: 0,
+    followers: 0,
+    following: 0,
+    events: 0,
+  });
 
   // Check Login
   useEffect(() => {
@@ -62,6 +82,35 @@ export default function DashboardPage() {
             if (docSnap.exists()) {
               setProfile(docSnap.data());
             }
+
+            // Get registrations
+            const regs = await getUserRegistrations(currentUser.uid);
+            setMyRegistrations(regs);
+
+            // Unread notification count
+            const notifs = await getUserNotifications(currentUser.uid);
+            setUnreadNotifs(notifs.filter((n: Notification) => !n.read).length);
+
+            // Real stats from Firestore
+            const [postsSnap, followersSnap, followingSnap] = await Promise.all([
+              // Count posts by this user
+              getCountFromServer(
+                query(collection(db, "posts"), where("userEmail", "==", currentUser.email))
+              ),
+              // Followers / following stored on user profile doc
+              getDoc(doc(db, "users", currentUser.uid)),
+              // reuse same doc — already fetched above but we need counts
+              Promise.resolve(null),
+            ]);
+
+            const profileData = followersSnap.exists() ? followersSnap.data() : {};
+
+            setStats({
+              posts: postsSnap.data().count,
+              followers: profileData?.followersCount ?? 0,
+              following: profileData?.followingCount ?? 0,
+              events: regs.length,
+            });
           } else {
             router.push("/login");
           }
@@ -159,6 +208,230 @@ export default function DashboardPage() {
         </button>
       </div>
 
+      {/* Quick Nav */}
+      <div
+        style={{
+          display: "flex",
+          gap: "15px",
+          flexWrap: "wrap",
+          marginBottom: "40px",
+        }}
+      >
+        <Link
+          href="/events"
+          style={{
+            background: "linear-gradient(135deg, #3b82f6, #6366f1)",
+            padding: "16px 24px",
+            borderRadius: "16px",
+            color: "white",
+            fontWeight: "bold",
+            textDecoration: "none",
+            fontSize: "15px",
+          }}
+        >
+          🎉 Browse Events
+        </Link>
+        <Link
+          href="/events/create"
+          style={{
+            background: "linear-gradient(135deg, #8b5cf6, #ec4899)",
+            padding: "16px 24px",
+            borderRadius: "16px",
+            color: "white",
+            fontWeight: "bold",
+            textDecoration: "none",
+            fontSize: "15px",
+          }}
+        >
+          ➕ Host an Event
+        </Link>
+        <Link
+          href="/host"
+          style={{
+            background: "linear-gradient(135deg, #0ea5e9, #6366f1)",
+            padding: "16px 24px",
+            borderRadius: "16px",
+            color: "white",
+            fontWeight: "bold",
+            textDecoration: "none",
+            fontSize: "15px",
+          }}
+        >
+          🏠 Host Dashboard
+        </Link>
+        <Link
+          href="/notifications"
+          style={{
+            background: "#1e293b",
+            padding: "16px 24px",
+            borderRadius: "16px",
+            color: "white",
+            fontWeight: "bold",
+            textDecoration: "none",
+            fontSize: "15px",
+            border: "1px solid rgba(255,255,255,0.08)",
+            position: "relative",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "8px",
+          }}
+        >
+          🔔 Notifications
+          {unreadNotifs > 0 && (
+            <span style={{
+              background: "#8b5cf6",
+              color: "white",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "700",
+              padding: "2px 7px",
+              lineHeight: 1.4,
+            }}>
+              {unreadNotifs}
+            </span>
+          )}
+        </Link>
+        <Link
+          href="/reviews"
+          style={{
+            background: "#1e293b",
+            padding: "16px 24px",
+            borderRadius: "16px",
+            color: "white",
+            fontWeight: "bold",
+            textDecoration: "none",
+            fontSize: "15px",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          ⭐ Reviews
+        </Link>
+        <Link
+          href="/people"
+          style={{
+            background: "#1e293b",
+            padding: "16px 24px",
+            borderRadius: "16px",
+            color: "white",
+            fontWeight: "bold",
+            textDecoration: "none",
+            fontSize: "15px",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          👥 Find People
+        </Link>
+        <Link
+          href="/profile"
+          style={{
+            background: "#1e293b",
+            padding: "16px 24px",
+            borderRadius: "16px",
+            color: "white",
+            fontWeight: "bold",
+            textDecoration: "none",
+            fontSize: "15px",
+            border: "1px solid rgba(255,255,255,0.08)",
+          }}
+        >
+          👤 Edit Profile
+        </Link>
+      </div>
+
+      {/* My Registrations */}
+      {myRegistrations.length > 0 && (
+        <div
+          style={{
+            background: "#1e293b",
+            padding: "25px",
+            borderRadius: "20px",
+            maxWidth: "700px",
+            marginBottom: "40px",
+          }}
+        >
+          <h2 style={{ marginBottom: "20px", fontSize: "20px" }}>
+            🎟️ My Event Registrations
+          </h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
+            {myRegistrations.map((reg) => (
+              <div
+                key={reg.id}
+                style={{
+                  background: "rgba(255,255,255,0.04)",
+                  border: "1px solid rgba(255,255,255,0.08)",
+                  borderRadius: "12px",
+                  padding: "14px 16px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: "12px",
+                  flexWrap: "wrap",
+                }}
+              >
+                <div>
+                  <p style={{ fontWeight: "600", marginBottom: "4px" }}>
+                    Event ID: {reg.eventId.slice(0, 8)}...
+                  </p>
+                  <p style={{ fontSize: "13px", color: "#94a3b8" }}>
+                    Status:{" "}
+                    <span
+                      style={{
+                        color:
+                          reg.status === "paid"
+                            ? "#34d399"
+                            : reg.status === "approved"
+                            ? "#60a5fa"
+                            : reg.status === "rejected"
+                            ? "#f87171"
+                            : "#fbbf24",
+                        fontWeight: "600",
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {reg.status}
+                    </span>
+                  </p>
+                </div>
+                <div style={{ display: "flex", gap: "8px" }}>
+                  <Link
+                    href={`/events/${reg.eventId}`}
+                    style={{
+                      background: "rgba(99,102,241,0.2)",
+                      border: "1px solid rgba(99,102,241,0.3)",
+                      color: "#a78bfa",
+                      padding: "8px 14px",
+                      borderRadius: "8px",
+                      fontSize: "13px",
+                      fontWeight: "600",
+                      textDecoration: "none",
+                    }}
+                  >
+                    View Event
+                  </Link>
+                  {reg.status === "paid" && (
+                    <Link
+                      href={`/chat/${reg.eventId}`}
+                      style={{
+                        background: "rgba(139,92,246,0.2)",
+                        border: "1px solid rgba(139,92,246,0.3)",
+                        color: "#c4b5fd",
+                        padding: "8px 14px",
+                        borderRadius: "8px",
+                        fontSize: "13px",
+                        fontWeight: "600",
+                        textDecoration: "none",
+                      }}
+                    >
+                      💬 Chat
+                    </Link>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stats */}
       <div
         style={{
@@ -168,62 +441,38 @@ export default function DashboardPage() {
           marginBottom: "40px",
         }}
       >
-        <div
-          style={{
-            background: "#1e293b",
-            padding: "20px",
-            borderRadius: "20px",
-            width: "180px",
-          }}
-        >
-          <h3>Posts</h3>
-
-          <p
+        {[
+          { label: "Posts", value: stats.posts, icon: "📝" },
+          { label: "Followers", value: stats.followers, icon: "👥" },
+          { label: "Following", value: stats.following, icon: "➕" },
+          { label: "Events", value: stats.events, icon: "🎉" },
+        ].map((stat) => (
+          <div
+            key={stat.label}
             style={{
-              fontSize: "30px",
+              background: "#1e293b",
+              padding: "20px 24px",
+              borderRadius: "20px",
+              minWidth: "150px",
+              border: "1px solid rgba(255,255,255,0.06)",
             }}
           >
-            12
-          </p>
-        </div>
-
-        <div
-          style={{
-            background: "#1e293b",
-            padding: "20px",
-            borderRadius: "20px",
-            width: "180px",
-          }}
-        >
-          <h3>Followers</h3>
-
-          <p
-            style={{
-              fontSize: "30px",
-            }}
-          >
-            540
-          </p>
-        </div>
-
-        <div
-          style={{
-            background: "#1e293b",
-            padding: "20px",
-            borderRadius: "20px",
-            width: "180px",
-          }}
-        >
-          <h3>Following</h3>
-
-          <p
-            style={{
-              fontSize: "30px",
-            }}
-          >
-            210
-          </p>
-        </div>
+            <p style={{ fontSize: "22px", marginBottom: "6px" }}>{stat.icon}</p>
+            <p
+              style={{
+                fontSize: "32px",
+                fontWeight: "bold",
+                lineHeight: 1,
+                marginBottom: "6px",
+              }}
+            >
+              {stat.value}
+            </p>
+            <h3 style={{ color: "#94a3b8", fontSize: "14px", fontWeight: "normal" }}>
+              {stat.label}
+            </h3>
+          </div>
+        ))}
       </div>
 
       {/* User Card */}

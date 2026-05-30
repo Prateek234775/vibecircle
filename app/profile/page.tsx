@@ -1,32 +1,21 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+
 import {
   auth,
   db,
 } from "@/firebase/config";
 
 import {
-  onAuthStateChanged,
-} from "firebase/auth";
-
-import {
   getUserProfile,
   saveUserProfile,
 } from "@/lib/firestore";
-// ─── Firebase stubs – replace with your real imports ──────────────────────────
-// import { saveUserProfile } from "@/lib/firebase/firestore";
-// import { auth } from "@/lib/firebase/config";
-// import { onAuthStateChanged } from "firebase/auth";
-//
-// Firestore example for saveUserProfile:
-//
-// import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-// import { db } from "@/lib/firebase/config";
-//
-// export async function saveUserProfile(uid: string, data: UserProfile) {
-//   await setDoc(doc(db, "users", uid), { ...data, updatedAt: serverTimestamp() }, { merge: true });
-// }
+
+import React from "react";
+
+import { useState, useEffect, useRef } from "react";
+
+import { onAuthStateChanged } from "firebase/auth";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -177,17 +166,14 @@ function HobbyTag({ label, onRemove, disabled }: { label: string; onRemove: () =
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
-  // In a real app, get uid from Firebase auth:
-  // const [uid, setUid] = useState<string | null>(null);
-  // useEffect(() => onAuthStateChanged(auth, u => setUid(u?.uid ?? null)), []);
   const [uid, setUid] = useState("");
 
 useEffect(() => {
-  const unsubscribe = onAuthStateChanged(auth, (user) => {
+  const unsubscribe = onAuthStateChanged(auth, async (user) => {
     if (user) {
       setUid(user.uid);
       const existingProfile =
-       await getUserProfile(user.uid);
+        await getUserProfile(user.uid);
 
       if (existingProfile) {
        setProfile({
@@ -286,33 +272,64 @@ useEffect(() => {
     s => !hobbyList.includes(s) && s.toLowerCase().includes(hobbyInput.toLowerCase())
   );
 
-  const handleSave = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const allTouched = Object.fromEntries(
-      ["name", "profession", "city", "bio"].map(k => [k, true])
+  const handleSave = async (
+  e: React.FormEvent
+) => {
+  e.preventDefault();
+
+  const allTouched = Object.fromEntries(
+    ["name", "profession", "city", "bio"].map(
+      (k) => [k, true]
+    )
+  );
+
+  setTouched(allTouched);
+
+  const errs = validate(profile);
+
+  setErrors(errs);
+
+  if (Object.keys(errs).length > 0)
+    return;
+
+  if (!uid) {
+    alert("Please login first");
+    return;
+  }
+
+  setSaving(true);
+
+  setSaveStatus("idle");
+
+  setErrorMessage("");
+
+  try {
+    await saveUserProfile(
+      uid,
+      profile
     );
-    setTouched(allTouched);
-    const errs = validate(profile);
-    setErrors(errs);
-    if (Object.keys(errs).length > 0) return;
-    if (!uid) {
-       alert("Please login first");
-       return;
-    }
-    setSaving(true);
-    setSaveStatus("idle");
-    setErrorMessage("");
-    try {
-      await saveUserProfile(uid, profile);
-      setSaveStatus("success");
-      setTimeout(() => setSaveStatus("idle"), 3500);
-    } catch (err) {
-      setSaveStatus("error");
-      setErrorMessage(err instanceof Error ? err.message : "Could not save profile.");
-    } finally {
-      setSaving(false);
-    }
-  };
+
+    setSaveStatus("success");
+
+    setTimeout(() => {
+      setSaveStatus("idle");
+    }, 3000);
+
+  } catch (err) {
+
+    setSaveStatus("error");
+
+    setErrorMessage(
+      err instanceof Error
+        ? err.message
+        : "Could not save profile."
+    );
+
+  } finally {
+
+    setSaving(false);
+  }
+};
 
   const bioRemaining = MAX_BIO - profile.bio.length;
   const isComplete = profile.name && profile.profession && profile.city;
@@ -925,102 +942,142 @@ useEffect(() => {
                     </Field>
                   </div>
 
-                  {/* Bio */}
-                  <div className="fu fu5">
-                    <Field
-                      label="Profile Photo URL"
-                      hint="Paste image URL"
-                      icon={
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                        >
-                          <path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10" />
-                          <circle cx="9" cy="9" r="2" />
-                          <path d="M21 15l-5-5L5 21" />
-                        </svg>
-                      }
-                    >
-                      <input
-                        className="vc-input"
-                        type="text"
-                        placeholder="https://..."
-                        value={profile.photoURL}
-                        onChange={set("photoURL")}
-                      />
-                      </Field>
-                    </div>
-                      label="Bio"
-                      error={touched.bio ? errors.bio : undefined}
-                      icon={<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
-                    
-                      <>
-                        <textarea
-                          className={`vc-textarea${touched.bio && errors.bio ? " err" : ""}`}
-                          placeholder="Tell the circle a bit about yourself — your story, what drives you, or what you're looking to connect over…"
-                          value={profile.bio}
-                          onChange={set("bio")}
-                          onBlur={() => touch("bio")}
-                          disabled={saving}
-                          maxLength={MAX_BIO + 10}
-                        />
-                        <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 5 }}>
-                          <span style={{
-                            fontSize: 11.5,
-                            color: bioRemaining < 20 ? "var(--warn)" : "var(--text-3)",
-                            transition: "color 0.2s",
-                          }}>
-                            {bioRemaining} / {MAX_BIO}
-                          </span>
-                        </div>
-                      </>
-                    </Field>
+                  {/* Profile Photo URL */}
+<div className="fu fu5">
+  <Field
+    label="Profile Photo URL"
+    hint="Paste image URL"
+    icon={
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <path d="M21 15V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10" />
+        <circle cx="9" cy="9" r="2" />
+        <path d="M21 15l-5-5L5 21" />
+      </svg>
+    }
+  >
+    <input
+      className="vc-input"
+      type="text"
+      placeholder="https://..."
+      value={profile.photoURL}
+      onChange={set("photoURL")}
+    />
+  </Field>
+</div>
+
+{/* Bio */}
+<div className="fu fu6">
+  <Field
+    label="Bio"
+    error={touched.bio ? errors.bio : undefined}
+    icon={
+      <svg
+        width="13"
+        height="13"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      >
+        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+      </svg>
+    }
+  >
+    <>
+      <textarea
+        className={`vc-textarea${
+          touched.bio && errors.bio ? " err" : ""
+        }`}
+        placeholder="Tell the circle a bit about yourself — your story, what drives you, or what you're looking to connect over…"
+        value={profile.bio}
+        onChange={set("bio")}
+        onBlur={() => touch("bio")}
+        disabled={saving}
+        maxLength={MAX_BIO + 10}
+      />
+
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "flex-end",
+          marginTop: 5,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 11.5,
+            color:
+              bioRemaining < 20
+                ? "var(--warn)"
+                : "var(--text-3)",
+            transition: "color 0.2s",
+          }}
+        >
+          {bioRemaining} / {MAX_BIO}
+        </span>
+      </div>
+    </>
+  </Field>
                   </div>
-                </div>
 
                 {/* Footer */}
                 <div className="vc-form-footer fu fu7">
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    {saveStatus === "success" && (
-                      <div className="vc-banner" style={{ background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.2)", color: "var(--success)" }}>
-                        <svg className="vc-banner-check" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                          <path d="M20 6L9 17l-5-5" />
-                        </svg>
-                        Profile saved successfully!
-                      </div>
-                    )}
-                    {saveStatus === "error" && (
-                      <div className="vc-banner" style={{ background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)", color: "var(--error)" }}>
-                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                          <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                        </svg>
-                        {errorMessage || "Save failed. Please try again."}
-                      </div>
-                    )}
-                  </div>
-                  <button
-                    type="submit"
-                    className="vc-btn-save"
-                    disabled={saving}
-                    style={{ flexShrink: 0 }}
-                  >
-                    {saving ? (
-                      <><Spinner size={16} /> Saving…</>
-                    ) : (
-                      <>
-                        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                          <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
-                          <polyline points="17 21 17 13 7 13 7 21" />
-                          <polyline points="7 3 7 8 15 8" />
-                        </svg>
-                        Save Profile
-                      </>
-                    )}
-                  </button>
+  <div style={{ flex: 1, minWidth: 0 }}>
+    {saveStatus === "success" && (
+      <div
+        className="vc-banner"
+        style={{
+          background:
+            "rgba(52,211,153,0.08)",
+          border:
+            "1px solid rgba(52,211,153,0.2)",
+          color: "var(--success)",
+        }}
+      >
+        Profile saved successfully!
+      </div>
+    )}
+
+    {saveStatus === "error" && (
+      <div
+        className="vc-banner"
+        style={{
+          background:
+            "rgba(248,113,113,0.08)",
+          border:
+            "1px solid rgba(248,113,113,0.2)",
+          color: "var(--error)",
+        }}
+      >
+        {errorMessage}
+      </div>
+    )}
+  </div>
+
+  <button
+    type="submit"
+    className="vc-btn-save"
+    disabled={saving}
+  >
+    {saving ? (
+      <>
+        <Spinner size={16} />
+        Saving...
+      </>
+    ) : (
+      "Save Profile"
+    )}
+  </button>
+</div>
+
                 </div>
 
               </div>
@@ -1033,9 +1090,31 @@ useEffect(() => {
 }
 
 // ─── Completion helper ────────────────────────────────────────────────────────
-function completionPercent(profile: UserProfile): number {
-  const fields: (keyof UserProfile)[] = ["name", "profession", "hobbies", "city", "bio"];
-  const filled = fields.filter(f => profile[f].trim().length > 0).length;
-  return Math.round((filled / fields.length) * 100);
+function completionPercent(
+  profile: UserProfile
+): number {
+
+  const fields: (
+    keyof UserProfile
+  )[] = [
+    "name",
+    "profession",
+    "hobbies",
+    "city",
+    "bio",
+    "photoURL",
+  ];
+
+  const filled = fields.filter(
+    (f) =>
+      profile[f]
+        .trim()
+        .length > 0
+  ).length;
+
+  return Math.round(
+    (filled / fields.length) * 100
+  );
+
 }
 

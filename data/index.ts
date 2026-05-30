@@ -1,3 +1,5 @@
+import type { FooterColumn } from "@/types";
+
 export const testimonials = [
   {
     name: "Rahul Sharma",
@@ -5,7 +7,23 @@ export const testimonials = [
     company: "Google",
     content: "Amazing networking experience with professionals.",
     rating: 5,
-    avatar: "/images/user1.jpg",
+    avatar: "RS",
+  },
+  {
+    name: "Priya Mehta",
+    role: "Product Designer",
+    company: "Flipkart",
+    content: "The house parties on VibeCircle are next level. Met my co-founder here!",
+    rating: 5,
+    avatar: "PM",
+  },
+  {
+    name: "Arjun Kapoor",
+    role: "Startup Founder",
+    company: "TechVentures",
+    content: "Best community platform I've used. The ticket system is seamless.",
+    rating: 5,
+    avatar: "AK",
   },
 ];
 
@@ -16,5 +34,20 @@ export const events = [
     location: "Delhi",
     category: "Business",
     attendees: 120,
+  },
+];
+
+export const footerColumns: FooterColumn[] = [
+  {
+    label: "Product",
+    items: ["Events", "Communities", "Discover", "Pricing"],
+  },
+  {
+    label: "Company",
+    items: ["About", "Blog", "Careers", "Press"],
+  },
+  {
+    label: "Support",
+    items: ["Help Center", "Contact", "Privacy", "Terms"],
   },
 ];

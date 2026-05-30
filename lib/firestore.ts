@@ -38,9 +38,10 @@ export async function getUserProfile(uid: string) {
   return snap.exists() ? snap.data() : null;
 }
 
-export async function getAllUsers(): Promise<UserSummary[]> {
-  const snap = await getDocs(collection(db, "users"));
-  return snap.docs.map((d) => ({ uid: d.id, ...d.data() } as UserSummary));
+export async function getAllUsers(limitCount = 50): Promise<UserSummary[]> {
+  const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
+  return snap.docs.slice(0, limitCount).map((d) => ({ uid: d.id, ...d.data() } as UserSummary));
 }
 
 // ─── Admin check ──────────────────────────────────────────────────────────────
@@ -618,4 +619,143 @@ export async function updateRefundStatus(
   status: "approved" | "rejected"
 ): Promise<void> {
   await updateDoc(doc(db, "refundRequests", refundId), { status });
+}
+
+// ─── Username system ──────────────────────────────────────────────────────────
+
+/** Check if a username is already taken. Returns true if available. */
+export async function isUsernameAvailable(username: string): Promise<boolean> {
+  const q = query(
+    collection(db, "users"),
+    where("username", "==", username.toLowerCase().trim())
+  );
+  const snap = await getDocs(q);
+  return snap.empty;
+}
+
+/** Claim a username for a user. Throws if already taken. */
+export async function claimUsername(uid: string, username: string): Promise<void> {
+  const clean = username.toLowerCase().trim();
+  if (!/^[a-z0-9_]{3,20}$/.test(clean)) {
+    throw new Error("Username must be 3–20 characters: letters, numbers, underscores only.");
+  }
+  const available = await isUsernameAvailable(clean);
+  if (!available) throw new Error("This username is already taken.");
+  await updateDoc(doc(db, "users", uid), { username: clean });
+}
+
+/** Find a user by their @username */
+export async function getUserByUsername(username: string) {
+  const q = query(
+    collection(db, "users"),
+    where("username", "==", username.toLowerCase().trim())
+  );
+  const snap = await getDocs(q);
+  if (snap.empty) return null;
+  const d = snap.docs[0];
+  return { uid: d.id, ...d.data() };
+}
+
+// ─── Aadhaar Verification ─────────────────────────────────────────────────────
+// NOTE: Real Aadhaar verification requires a licensed KYC provider (e.g. Digio,
+// Signzy, Karza). This implementation stores the submission and marks the user
+// as pending. An admin reviews and approves, or you integrate a real API.
+
+export interface AadhaarSubmission {
+  id: string;
+  uid: string;
+  userName: string;
+  aadhaarLast4: string;       // last 4 digits only — never store full number
+  nameOnAadhaar: string;
+  dobOnAadhaar: string;       // YYYY-MM-DD
+  status: "pending" | "verified" | "rejected";
+  submittedAt: string;
+  reviewedAt?: string;
+}
+
+export async function submitAadhaarVerification(
+  uid: string,
+  userName: string,
+  aadhaarLast4: string,
+  nameOnAadhaar: string,
+  dobOnAadhaar: string
+): Promise<void> {
+  // Check if already submitted
+  const existing = await getDoc(doc(db, "aadhaarVerifications", uid));
+  if (existing.exists() && existing.data().status === "verified") {
+    throw new Error("Your Aadhaar is already verified.");
+  }
+
+  await setDoc(doc(db, "aadhaarVerifications", uid), {
+    uid,
+    userName,
+    aadhaarLast4,
+    nameOnAadhaar,
+    dobOnAadhaar,
+    status: "pending",
+    submittedAt: serverTimestamp(),
+  });
+
+  // Mark user as pending verification
+  await updateDoc(doc(db, "users", uid), { aadhaarVerified: false, aadhaarStatus: "pending" });
+}
+
+export async function getAadhaarStatus(uid: string): Promise<"none" | "pending" | "verified" | "rejected"> {
+  const snap = await getDoc(doc(db, "aadhaarVerifications", uid));
+  if (!snap.exists()) return "none";
+  return snap.data().status as "pending" | "verified" | "rejected";
+}
+
+export async function getPendingAadhaarVerifications(): Promise<AadhaarSubmission[]> {
+  const q = query(
+    collection(db, "aadhaarVerifications"),
+    where("status", "==", "pending"),
+    orderBy("submittedAt", "desc")
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((d) => {
+    const data = d.data();
+    return {
+      id: d.id,
+      ...data,
+      submittedAt:
+        data.submittedAt instanceof Timestamp
+          ? data.submittedAt.toDate().toISOString()
+          : data.submittedAt ?? new Date().toISOString(),
+    } as AadhaarSubmission;
+  });
+}
+
+export async function approveAadhaar(uid: string): Promise<void> {
+  await updateDoc(doc(db, "aadhaarVerifications", uid), {
+    status: "verified",
+    reviewedAt: serverTimestamp(),
+  });
+  await updateDoc(doc(db, "users", uid), {
+    aadhaarVerified: true,
+    aadhaarStatus: "verified",
+  });
+  await createNotification(
+    uid,
+    "booking_confirmed",
+    "Aadhaar Verified ✅",
+    "Your identity has been verified. You can now register for events on VibeCircle."
+  );
+}
+
+export async function rejectAadhaar(uid: string): Promise<void> {
+  await updateDoc(doc(db, "aadhaarVerifications", uid), {
+    status: "rejected",
+    reviewedAt: serverTimestamp(),
+  });
+  await updateDoc(doc(db, "users", uid), {
+    aadhaarVerified: false,
+    aadhaarStatus: "rejected",
+  });
+  await createNotification(
+    uid,
+    "event_rejected",
+    "Verification Failed",
+    "Your Aadhaar verification was not approved. Please resubmit with correct details."
+  );
 }

@@ -24,6 +24,7 @@ import { auth, db } from "@/firebase/config";
 
 async function signupWithEmail(
   name: string,
+  username: string,
   email: string,
   password: string
 ): Promise<void> {
@@ -46,7 +47,12 @@ async function signupWithEmail(
   await setDoc(doc(db, "users", user.uid), {
     uid: user.uid,
     name: name,
+    username: username.toLowerCase().trim(),
     email: email,
+    aadhaarVerified: false,
+    aadhaarStatus: "none",
+    followersCount: 0,
+    followingCount: 0,
     createdAt: new Date(),
   });
 }
@@ -60,6 +66,7 @@ async function signInWithGoogle(): Promise<void> {
 // ─── Types ────────────────────────────────────────────────────────────────────
 interface FieldErrors {
   name?: string;
+  username?: string;
   email?: string;
   password?: string;
   terms?: string;
@@ -67,6 +74,7 @@ interface FieldErrors {
 
 interface Touched {
   name: boolean;
+  username: boolean;
   email: boolean;
   password: boolean;
   terms: boolean;
@@ -75,6 +83,7 @@ interface Touched {
 // ─── Validation ───────────────────────────────────────────────────────────────
 function validate(
   name: string,
+  username: string,
   email: string,
   password: string,
   terms: boolean
@@ -82,6 +91,9 @@ function validate(
   const e: FieldErrors = {};
   if (!name.trim()) e.name = "Full name is required.";
   else if (name.trim().length < 2) e.name = "Name must be at least 2 characters.";
+  if (!username.trim()) e.username = "Username is required.";
+  else if (!/^[a-z0-9_]{3,20}$/.test(username.toLowerCase().trim()))
+    e.username = "3–20 chars: letters, numbers, underscores only.";
   if (!email) e.email = "Email is required.";
   else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) e.email = "Enter a valid email address.";
   if (!password) e.password = "Password is required.";
@@ -165,12 +177,15 @@ function CheckIcon() {
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function SignupPage() {
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [terms, setTerms] = useState(false);
   const [errors, setErrors] = useState<FieldErrors>({});
-  const [touched, setTouched] = useState<Touched>({ name: false, email: false, password: false, terms: false });
+  const [touched, setTouched] = useState<Touched>({ name: false, username: false, email: false, password: false, terms: false });
   const [globalError, setGlobalError] = useState("");
   const [loadingEmail, setLoadingEmail] = useState(false);
   const [loadingGoogle, setLoadingGoogle] = useState(false);
@@ -182,28 +197,44 @@ export default function SignupPage() {
 
   useEffect(() => { setMounted(true); }, []);
 
+  // Check username availability with debounce
+  useEffect(() => {
+    if (!username || username.length < 3) { setUsernameAvailable(null); return; }
+    const timer = setTimeout(async () => {
+      setCheckingUsername(true);
+      try {
+        const { isUsernameAvailable } = await import("@/lib/firestore");
+        const available = await isUsernameAvailable(username.toLowerCase().trim());
+        setUsernameAvailable(available);
+      } catch { setUsernameAvailable(null); }
+      finally { setCheckingUsername(false); }
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [username]);
+
   // Live-validate once a field has been touched
   useEffect(() => {
     if (Object.values(touched).some(Boolean)) {
-      setErrors(validate(name, email, password, terms));
+      setErrors(validate(name, username, email, password, terms));
     }
-  }, [name, email, password, terms, touched]);
+  }, [name, username, email, password, terms, touched]);
 
   const touch = (field: keyof Touched) =>
     setTouched(prev => ({ ...prev, [field]: true }));
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setTouched({ name: true, email: true, password: true, terms: true });
-    const errs = validate(name, email, password, terms);
+    setTouched({ name: true, username: true, email: true, password: true, terms: true });
+    const errs = validate(name, username, email, password, terms);
     setErrors(errs);
     if (Object.keys(errs).length) return;
+    if (usernameAvailable === false) { setErrors(prev => ({ ...prev, username: "Username is taken." })); return; }
 
     setGlobalError("");
     setLoadingEmail(true);
     try {
-      await signupWithEmail(name.trim(), email, password);
-      window.location.href = "/dashboard";;
+      await signupWithEmail(name.trim(), username.toLowerCase().trim(), email, password);
+      window.location.href = "/dashboard";
     } catch (err) {
       setGlobalError(friendlyError(err));
     } finally {
@@ -216,7 +247,7 @@ export default function SignupPage() {
     setLoadingGoogle(true);
     try {
       await signInWithGoogle();
-      window.location.href = "/dashboard";;
+      window.location.href = "/dashboard";
     } catch (err) {
       setGlobalError(friendlyError(err));
     } finally {
@@ -589,6 +620,9 @@ export default function SignupPage() {
           ) : (
             <SignupForm
               name={name} setName={setName}
+              username={username} setUsername={setUsername}
+              usernameAvailable={usernameAvailable}
+              checkingUsername={checkingUsername}
               email={email} setEmail={setEmail}
               password={password} setPassword={setPassword}
               showPassword={showPassword} setShowPassword={setShowPassword}
@@ -611,13 +645,16 @@ export default function SignupPage() {
 
 // ─── Signup Form ──────────────────────────────────────────────────────────────
 function SignupForm({
-  name, setName, email, setEmail, password, setPassword,
+  name, setName, username, setUsername, usernameAvailable, checkingUsername,
+  email, setEmail, password, setPassword,
   showPassword, setShowPassword, terms, setTerms,
   errors, touched, strength, globalError,
   loadingEmail, loadingGoogle, isLoading,
   touch, onSubmit, onGoogle,
 }: {
   name: string; setName: (v: string) => void;
+  username: string; setUsername: (v: string) => void;
+  usernameAvailable: boolean | null; checkingUsername: boolean;
   email: string; setEmail: (v: string) => void;
   password: string; setPassword: (v: string) => void;
   showPassword: boolean; setShowPassword: (v: boolean) => void;
@@ -703,6 +740,48 @@ function SignupForm({
             <p className="vc-field-error">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
               {errors.name}
+            </p>
+          )}
+        </div>
+
+        {/* Username */}
+        <div className="fu fu3">
+          <label className="vc-label">Username</label>
+          <div style={{ position: "relative" }}>
+            <span style={{
+              position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)",
+              color: "var(--text-3)", fontSize: 15, pointerEvents: "none",
+            }}>@</span>
+            <input
+              className={`vc-input${touched.username && errors.username ? " err" : ""}`}
+              type="text"
+              autoComplete="username"
+              placeholder="your_handle"
+              style={{ paddingLeft: 28 }}
+              value={username}
+              onChange={e => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+              onBlur={() => touch("username")}
+              disabled={isLoading}
+              maxLength={20}
+            />
+            {username.length >= 3 && (
+              <span style={{
+                position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                fontSize: 12, fontWeight: 600,
+                color: checkingUsername ? "var(--text-3)" : usernameAvailable === true ? "#34d399" : usernameAvailable === false ? "#f87171" : "var(--text-3)",
+              }}>
+                {checkingUsername ? "..." : usernameAvailable === true ? "✓ Available" : usernameAvailable === false ? "✗ Taken" : ""}
+              </span>
+            )}
+          </div>
+          {touched.username && errors.username ? (
+            <p className="vc-field-error">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" /></svg>
+              {errors.username}
+            </p>
+          ) : (
+            <p style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 5 }}>
+              3–20 chars · letters, numbers, underscores · unique forever
             </p>
           )}
         </div>

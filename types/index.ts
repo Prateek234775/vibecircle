@@ -155,9 +155,11 @@ export interface FollowRelation {
 export interface UserSummary {
   uid: string;
   name: string;
+  username?: string;          // unique @handle e.g. "prateek_vc"
   profession?: string;
   city?: string;
   photoURL?: string;
   followersCount: number;
   followingCount: number;
+  aadhaarVerified?: boolean;  // true after Aadhaar KYC
 }

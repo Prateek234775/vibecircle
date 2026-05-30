@@ -83,6 +83,7 @@ export default function PeoplePage() {
   const filtered = users.filter(
     (u) =>
       u.name?.toLowerCase().includes(search.toLowerCase()) ||
+      u.username?.toLowerCase().includes(search.toLowerCase()) ||
       u.profession?.toLowerCase().includes(search.toLowerCase()) ||
       u.city?.toLowerCase().includes(search.toLowerCase())
   );
@@ -127,7 +128,7 @@ export default function PeoplePage() {
           <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
           <input
             type="text"
-            placeholder="Search by name, profession or city..."
+            placeholder="Search by @username, name, profession or city..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="w-full bg-white/[0.04] border border-white/8 rounded-xl pl-10 pr-4 py-3 text-sm text-white placeholder-slate-500 outline-none focus:border-violet-500/50 focus:ring-2 focus:ring-violet-500/10 transition-all"
@@ -202,7 +203,20 @@ function PersonCard({
           {initials}
         </div>
         <div className="min-w-0">
-          <p className="text-white font-semibold text-sm truncate">{person.name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="text-white font-semibold text-sm truncate">{person.name}</p>
+            {(person as UserSummary & { aadhaarVerified?: boolean }).aadhaarVerified && (
+              <span title="Aadhaar Verified" className="flex-shrink-0">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="12" fill="#3b82f6" />
+                  <path d="M7 12l3 3 7-7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+            )}
+          </div>
+          {person.username && (
+            <p className="text-violet-400 text-xs mt-0.5">@{person.username}</p>
+          )}
           {person.profession && (
             <div className="flex items-center gap-1 text-slate-500 text-xs mt-0.5">
               <Briefcase className="w-3 h-3 flex-shrink-0" />

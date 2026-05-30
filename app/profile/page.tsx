@@ -167,35 +167,39 @@ function HobbyTag({ label, onRemove, disabled }: { label: string; onRemove: () =
 // ─── Main Page ────────────────────────────────────────────────────────────────
 export default function ProfilePage() {
   const [uid, setUid] = useState("");
+  const [username, setUsername] = useState("");
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameAvailable, setUsernameAvailable] = useState<boolean | null>(null);
+  const [checkingUsername, setCheckingUsername] = useState(false);
+  const [savingUsername, setSavingUsername] = useState(false);
+  const [usernameMsg, setUsernameMsg] = useState("");
+  const [aadhaarStatus, setAadhaarStatus] = useState<"none"|"pending"|"verified"|"rejected">("none");
 
 useEffect(() => {
   const unsubscribe = onAuthStateChanged(auth, async (user) => {
     if (user) {
       setUid(user.uid);
-      const existingProfile =
-        await getUserProfile(user.uid);
+      const existingProfile = await getUserProfile(user.uid);
 
       if (existingProfile) {
-       setProfile({
-          name:
-           existingProfile.name || "",
-           profession:
-            existingProfile.profession || "",
-          hobbies:
-            existingProfile.hobbies || "",
-          city:
-            existingProfile.city || "",
-          bio:
-            existingProfile.bio || "",
-          photoURL:
-            existingProfile.photoURL || "",
-          });
+        setProfile({
+          name: existingProfile.name || "",
+          profession: existingProfile.profession || "",
+          hobbies: existingProfile.hobbies || "",
+          city: existingProfile.city || "",
+          bio: existingProfile.bio || "",
+          photoURL: existingProfile.photoURL || "",
+        });
+        if (existingProfile.username) {
+          setUsername(existingProfile.username);
+          setUsernameInput(existingProfile.username);
+        }
+        setAadhaarStatus(existingProfile.aadhaarStatus ?? "none");
       }
     }
   });
-
   return () => unsubscribe();
-}, []); // replace with real uid
+}, []);
 
   const [profile, setProfile] =
   useState<UserProfile>({
@@ -271,6 +275,42 @@ useEffect(() => {
   const filteredSuggestions = HOBBY_SUGGESTIONS.filter(
     s => !hobbyList.includes(s) && s.toLowerCase().includes(hobbyInput.toLowerCase())
   );
+
+  // Username availability check (debounced)
+  useEffect(() => {
+    if (!usernameInput || usernameInput === username || usernameInput.length < 3) {
+      setUsernameAvailable(null);
+      return;
+    }
+    const t = setTimeout(async () => {
+      setCheckingUsername(true);
+      try {
+        const { isUsernameAvailable } = await import("@/lib/firestore");
+        setUsernameAvailable(await isUsernameAvailable(usernameInput.toLowerCase()));
+      } catch { setUsernameAvailable(null); }
+      finally { setCheckingUsername(false); }
+    }, 500);
+    return () => clearTimeout(t);
+  }, [usernameInput, username]);
+
+  const handleSaveUsername = async () => {
+    if (!uid || !usernameInput.trim()) return;
+    if (usernameInput === username) return;
+    if (usernameAvailable === false) { setUsernameMsg("Username is taken."); return; }
+    setSavingUsername(true);
+    setUsernameMsg("");
+    try {
+      const { claimUsername } = await import("@/lib/firestore");
+      await claimUsername(uid, usernameInput);
+      setUsername(usernameInput.toLowerCase());
+      setUsernameMsg("✓ Username saved!");
+      setTimeout(() => setUsernameMsg(""), 3000);
+    } catch (err) {
+      setUsernameMsg(err instanceof Error ? err.message : "Failed to save username.");
+    } finally {
+      setSavingUsername(false);
+    }
+  };
 
   const handleSave = async (
   e: React.FormEvent
@@ -724,6 +764,9 @@ useEffect(() => {
                   <p className="syne" style={{ fontWeight: 700, fontSize: 15, letterSpacing: "-0.015em", color: profile.name ? "var(--text)" : "var(--text-3)" }}>
                     {profile.name || "Your Name"}
                   </p>
+                  {username && (
+                    <p style={{ fontSize: 12, color: "#a78bfa", marginTop: 2 }}>@{username}</p>
+                  )}
                   {/* VERIFIED BADGE */}
                   {profile.name && (
                    <span
@@ -734,16 +777,16 @@ useEffect(() => {
                      marginTop: "6px",
                      padding: "4px 10px",
                      borderRadius: "999px",
-                     background: "rgba(52,211,153,0.12)",
-                     border: "1px solid rgba(52,211,153,0.25)",
-                     color: "#34d399",
+                     background: aadhaarStatus === "verified" ? "rgba(52,211,153,0.12)" : "rgba(255,255,255,0.05)",
+                     border: `1px solid ${aadhaarStatus === "verified" ? "rgba(52,211,153,0.25)" : "rgba(255,255,255,0.08)"}`,
+                     color: aadhaarStatus === "verified" ? "#34d399" : "#64748b",
                      fontSize: "11px",
                      fontWeight: 600,
                      letterSpacing: "0.05em",
                      textTransform: "uppercase",
                     }}
                    >
-                    ✔ Verified User
+                    {aadhaarStatus === "verified" ? "✔ Aadhaar Verified" : "⚠ Unverified"}
                    </span>
                   )}
                   {profile.profession && (
@@ -874,6 +917,105 @@ useEffect(() => {
                         disabled={saving}
                       />
                     </Field>
+                  </div>
+
+                  {/* Username + Aadhaar */}
+                  <div className="fu fu4" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    {/* Username */}
+                    <div>
+                      <label style={{ fontSize: 11.5, fontWeight: 600, letterSpacing: "0.07em", textTransform: "uppercase", color: "var(--text-3)", marginBottom: 7, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ color: "var(--accent)", opacity: 0.8 }}>@</span>
+                        Username
+                      </label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ position: "relative", flex: 1 }}>
+                          <span style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "var(--text-3)", fontSize: 15, pointerEvents: "none" }}>@</span>
+                          <input
+                            className="vc-input"
+                            style={{ paddingLeft: 26 }}
+                            type="text"
+                            placeholder="your_handle"
+                            value={usernameInput}
+                            onChange={e => setUsernameInput(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ""))}
+                            disabled={saving || savingUsername}
+                            maxLength={20}
+                          />
+                          {usernameInput.length >= 3 && usernameInput !== username && (
+                            <span style={{
+                              position: "absolute", right: 12, top: "50%", transform: "translateY(-50%)",
+                              fontSize: 11, fontWeight: 600,
+                              color: checkingUsername ? "var(--text-3)" : usernameAvailable === true ? "#34d399" : usernameAvailable === false ? "#f87171" : "var(--text-3)",
+                            }}>
+                              {checkingUsername ? "..." : usernameAvailable === true ? "✓ Free" : usernameAvailable === false ? "✗ Taken" : ""}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleSaveUsername}
+                          disabled={savingUsername || usernameInput === username || usernameAvailable === false || usernameInput.length < 3}
+                          style={{
+                            background: "linear-gradient(135deg, #8b5cf6, #6366f1)",
+                            border: "none", borderRadius: "var(--radius)",
+                            color: "white", fontWeight: 600, fontSize: 13,
+                            padding: "0 16px", cursor: "pointer", whiteSpace: "nowrap",
+                            opacity: (savingUsername || usernameInput === username || usernameAvailable === false || usernameInput.length < 3) ? 0.4 : 1,
+                            transition: "opacity 0.15s",
+                          }}
+                        >
+                          {savingUsername ? "..." : username ? "Change" : "Claim"}
+                        </button>
+                      </div>
+                      {usernameMsg && (
+                        <p style={{ fontSize: 12, marginTop: 5, color: usernameMsg.startsWith("✓") ? "#34d399" : "#f87171" }}>
+                          {usernameMsg}
+                        </p>
+                      )}
+                      {!usernameMsg && (
+                        <p style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 5 }}>
+                          {username ? `Your handle: @${username}` : "3–20 chars · letters, numbers, underscores · unique forever"}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Aadhaar verification status */}
+                    <div style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "12px 14px", borderRadius: "var(--radius)",
+                      background: aadhaarStatus === "verified" ? "rgba(52,211,153,0.08)" : aadhaarStatus === "pending" ? "rgba(251,191,36,0.08)" : aadhaarStatus === "rejected" ? "rgba(248,113,113,0.08)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${aadhaarStatus === "verified" ? "rgba(52,211,153,0.2)" : aadhaarStatus === "pending" ? "rgba(251,191,36,0.2)" : aadhaarStatus === "rejected" ? "rgba(248,113,113,0.2)" : "rgba(255,255,255,0.07)"}`,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <div style={{
+                          width: 32, height: 32, borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center",
+                          background: aadhaarStatus === "verified" ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.05)",
+                        }}>
+                          {aadhaarStatus === "verified" ? (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="12" fill="#34d399"/><path d="M7 12l3 3 7-7" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          ) : (
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" style={{ color: "var(--text-3)" }}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                          )}
+                        </div>
+                        <div>
+                          <p style={{ fontSize: 13, fontWeight: 600, color: aadhaarStatus === "verified" ? "#34d399" : aadhaarStatus === "pending" ? "#fbbf24" : aadhaarStatus === "rejected" ? "#f87171" : "var(--text-2)" }}>
+                            {aadhaarStatus === "verified" ? "Aadhaar Verified ✅" : aadhaarStatus === "pending" ? "Verification Pending ⏳" : aadhaarStatus === "rejected" ? "Verification Rejected ❌" : "Not Verified"}
+                          </p>
+                          <p style={{ fontSize: 11.5, color: "var(--text-3)", marginTop: 1 }}>
+                            {aadhaarStatus === "verified" ? "You can register for events" : aadhaarStatus === "pending" ? "Under review — usually 24h" : "Aadhaar required to register for events"}
+                          </p>
+                        </div>
+                      </div>
+                      {aadhaarStatus !== "verified" && aadhaarStatus !== "pending" && (
+                        <a href="/verify" style={{
+                          background: "linear-gradient(135deg, #3b82f6, #6366f1)",
+                          color: "white", fontSize: 12, fontWeight: 600,
+                          padding: "7px 14px", borderRadius: 8, textDecoration: "none",
+                          whiteSpace: "nowrap", flexShrink: 0,
+                        }}>
+                          Verify Now
+                        </a>
+                      )}
+                    </div>
                   </div>
 
                   {/* City */}

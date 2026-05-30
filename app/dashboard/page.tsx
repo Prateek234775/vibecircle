@@ -58,59 +58,42 @@ export default function DashboardPage() {
 
   // Check Login
   useEffect(() => {
+    let dataLoaded = false;
     const unsubscribe =
       onAuthStateChanged(
         auth,
         async (currentUser) => {
           if (currentUser) {
             setUser(currentUser);
+            setPhotoURL(currentUser.photoURL || "");
 
-            setPhotoURL(
-              currentUser.photoURL || ""
-            );
+            // Only fetch data once per session
+            if (dataLoaded) return;
+            dataLoaded = true;
 
-            // Get User Data
-            const docRef = doc(
-              db,
-              "users",
-              currentUser.uid
-            );
-
-            const docSnap =
-              await getDoc(docRef);
-
-            if (docSnap.exists()) {
-              setProfile(docSnap.data());
-            }
-
-            // Get registrations
-            const regs = await getUserRegistrations(currentUser.uid);
-            setMyRegistrations(regs);
-
-            // Unread notification count
-            const notifs = await getUserNotifications(currentUser.uid);
-            setUnreadNotifs(notifs.filter((n: Notification) => !n.read).length);
-
-            // Real stats from Firestore
-            const [postsSnap, followersSnap, followingSnap] = await Promise.all([
-              // Count posts by this user
+            // Get User Data + registrations + notifications in parallel
+            const [docSnap, regs, notifs, postsSnap] = await Promise.all([
+              getDoc(doc(db, "users", currentUser.uid)),
+              getUserRegistrations(currentUser.uid),
+              getUserNotifications(currentUser.uid),
               getCountFromServer(
                 query(collection(db, "posts"), where("userEmail", "==", currentUser.email))
               ),
-              // Followers / following stored on user profile doc
-              getDoc(doc(db, "users", currentUser.uid)),
-              // reuse same doc — already fetched above but we need counts
-              Promise.resolve(null),
             ]);
 
-            const profileData = followersSnap.exists() ? followersSnap.data() : {};
+            if (docSnap.exists()) {
+              const profileData = docSnap.data();
+              setProfile(profileData);
+              setStats({
+                posts: postsSnap.data().count,
+                followers: profileData?.followersCount ?? 0,
+                following: profileData?.followingCount ?? 0,
+                events: regs.length,
+              });
+            }
 
-            setStats({
-              posts: postsSnap.data().count,
-              followers: profileData?.followersCount ?? 0,
-              following: profileData?.followingCount ?? 0,
-              events: regs.length,
-            });
+            setMyRegistrations(regs);
+            setUnreadNotifs(notifs.filter((n: Notification) => !n.read).length);
           } else {
             router.push("/login");
           }

@@ -82,6 +82,7 @@ export default function EventDetailPage() {
   const [userEmail, setUserEmail] = useState("");
   const [userPhoto, setUserPhoto] = useState("");
   const [userIsAdmin, setUserIsAdmin] = useState(false);
+  const [aadhaarVerified, setAadhaarVerified] = useState(false);
 
   const [registering, setRegistering] = useState(false);
   const [regError, setRegError] = useState("");
@@ -116,6 +117,7 @@ export default function EventDetailPage() {
       const profile = await getUserProfile(user.uid);
       setUserName(profile?.name ?? user.displayName ?? "User");
       setUserPhoto(profile?.photoURL ?? user.photoURL ?? "");
+      setAadhaarVerified(profile?.aadhaarVerified === true);
 
       const [ev, reg, revs, qs, adminCheck] = await Promise.all([
         getEvent(id),
@@ -682,22 +684,44 @@ export default function EventDetailPage() {
               {/* CTA */}
               {!registration && isRegistrationOpen && (
                 <>
-                  {regError && (
-                    <div className="flex items-start gap-2 text-red-400 text-xs bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2.5">
-                      <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
-                      {regError}
+                  {/* Aadhaar verification gate */}
+                  {!aadhaarVerified ? (
+                    <div className="space-y-3">
+                      <div className="flex items-start gap-2.5 text-amber-400 text-xs bg-amber-400/10 border border-amber-400/20 rounded-xl px-3 py-3">
+                        <ShieldCheck className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="font-semibold mb-0.5">Verification Required</p>
+                          <p className="text-amber-400/80">Only Aadhaar-verified members can register for events.</p>
+                        </div>
+                      </div>
+                      <Link
+                        href="/verify"
+                        className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-white font-semibold py-3 rounded-xl transition-all text-sm"
+                      >
+                        <ShieldCheck className="w-4 h-4" />
+                        Verify with Aadhaar
+                      </Link>
                     </div>
+                  ) : (
+                    <>
+                      {regError && (
+                        <div className="flex items-start gap-2 text-red-400 text-xs bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2.5">
+                          <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                          {regError}
+                        </div>
+                      )}
+                      <button
+                        onClick={handleRegister}
+                        disabled={registering}
+                        className="w-full bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-all text-sm"
+                      >
+                        {registering ? "Registering..." : "Register Now — Free"}
+                      </button>
+                      <p className="text-xs text-slate-500 text-center">
+                        Registration is free. Pay ₹{event.ticketPrice} after approval.
+                      </p>
+                    </>
                   )}
-                  <button
-                    onClick={handleRegister}
-                    disabled={registering}
-                    className="w-full bg-gradient-to-r from-blue-600 to-violet-600 hover:from-blue-500 hover:to-violet-500 disabled:opacity-50 text-white font-semibold py-3 rounded-xl transition-all text-sm"
-                  >
-                    {registering ? "Registering..." : "Register Now — Free"}
-                  </button>
-                  <p className="text-xs text-slate-500 text-center">
-                    Registration is free. Pay ₹{event.ticketPrice} after approval.
-                  </p>
                 </>
               )}
 
